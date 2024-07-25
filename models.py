@@ -118,16 +118,24 @@ class WorldModel(nn.Module):
     states, _ = self.dynamics.observe(embed[:6, :5], data['action'][:6, :5])
     recon = self.heads['image'](
         self.dynamics.get_feat(states)).mode()[:6]
-    reward_post = self.heads['reward'](
-        self.dynamics.get_feat(states)).mode()[:6]
+    # reward_post = self.heads['reward'](
+    #     self.dynamics.get_feat(states)).mode()[:6]
     init = {k: v[:, -1] for k, v in states.items()}
     prior = self.dynamics.imagine(data['action'][:6, 5:], init)
     openl = self.heads['image'](self.dynamics.get_feat(prior)).mode()
-    reward_prior = self.heads['reward'](self.dynamics.get_feat(prior)).mode()
+    # reward_prior = self.heads['reward'](self.dynamics.get_feat(prior)).mode()
     model = torch.cat([recon[:, :5] + 0.5, openl + 0.5], 1)
     error = (model - truth + 1) / 2
 
     return torch.cat([truth, model, error], 2)
+  
+  def forward(self, data):
+    '''
+    This method is used to produce model structure graph using tensorboard
+    '''
+    for key in data:
+      data[key] = data[key].to('cpu')
+    return self.video_pred(data)
 
 
 class ImagBehavior(nn.Module):

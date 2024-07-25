@@ -70,13 +70,14 @@ class Logger:
     scalars = list(self._scalars.items())
     if fps:
       scalars.append(('fps', self._compute_fps(self.step)))
-    print(f'[{self.step}]', ' / '.join(f'{k} {v:.1f}' for k, v in scalars))
+    print(f'logger scalars: [{self.step}]', ' / '.join(f'{k} {v:.1f}' for k, v in scalars))
     with (self._logdir / 'metrics.jsonl').open('a') as f:
       f.write(json.dumps({'step': self.step, ** dict(scalars)}) + '\n')
     for name, value in scalars:
       self._writer.add_scalar('scalars/' + name, value, self.step)
     for name, value in self._images.items():
       self._writer.add_image(name, value, self.step)
+      print(f"save image {name} at {self.step}")
     for name, value in self._videos.items():
       name = name if isinstance(name, str) else name.decode('utf-8')
       if np.issubdtype(value.dtype, np.floating):
@@ -84,6 +85,7 @@ class Logger:
       B, T, H, W, C = value.shape
       value = value.transpose(1, 4, 2, 0, 3).reshape((1, T, C, H, B*W))
       self._writer.add_video(name, value, self.step, 16)
+      print(f"save video {name} at {self.step}")
 
     self._writer.flush()
     self._scalars = {}
@@ -121,8 +123,9 @@ def simulate(agent, envs, steps=0, episodes=0, state=None):
     obs = [None] * len(envs)
     agent_state = None
     reward = [0]*len(envs)
+    total_rewards = [0] * len(envs)
   else:
-    step, episode, done, length, obs, agent_state, reward = state
+    step, episode, done, length, obs, agent_state, reward, total_rewards = state
   while (steps and step < steps) or (episodes and episode < episodes):
     # Reset envs if necessary.
     if done.any():
@@ -130,6 +133,7 @@ def simulate(agent, envs, steps=0, episodes=0, state=None):
       results = [envs[i].reset() for i in indices]
       for index, result in zip(indices, results):
         obs[index] = result
+        total_rewards[index] = 0
       reward = [reward[i]*(1-done[i]) for i in range(len(envs))]
     # Step agents.
     obs = {k: np.stack([o[k] for o in obs]) for k in obs[0]}
@@ -147,12 +151,16 @@ def simulate(agent, envs, steps=0, episodes=0, state=None):
     obs = list(obs)
     reward = list(reward)
     done = np.stack(done)
+
+    for i in range(len(envs)):
+      total_rewards[i] += reward[i]
+
     episode += int(done.sum())
     length += 1
     step += (done * length).sum()
     length *= (1 - done)
 
-  return (step - steps, episode - episodes, done, length, obs, agent_state, reward)
+  return (step - steps, episode - episodes, done, length, obs, agent_state, reward, total_rewards)
 
 
 def save_episodes(directory, episodes):
